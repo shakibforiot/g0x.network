@@ -41,6 +41,10 @@ wss.on('connection', (ws) => {
             try {
                 const data = JSON.parse(text);
                 if (data.type === 'android_init') {
+                    // Check if old connection exists and close it
+                    if (androidClients[data.code]) {
+                        androidClients[data.code].ws.terminate();
+                    }
                     ws.deviceCode = data.code;
                     androidClients[data.code] = {
                         ws: ws,
