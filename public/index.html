@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G0X CORE - Command Hub</title>
+    <style>
+        :root { --bg: #020617; --accent: #38bdf8; }
+        body { font-family: monospace; background: var(--bg); color: #fff; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 320px; background: #0f172a; border-right: 1px solid #1e293b; padding: 20px; display: flex; flex-direction: column; }
+        #main { flex: 1; display: flex; flex-direction: column; position: relative; background: #000; }
+        .dev-item { padding: 12px; background: #1e293b; border-radius: 8px; margin-bottom: 8px; cursor: pointer; border: 1px solid transparent; }
+        .dev-item.active { border-color: var(--accent); background: #263550; }
+        #screen-area { flex: 1; display: flex; align-items: center; justify-content: center; }
+        #screen-wrap { border: 4px solid #1e293b; border-radius: 20px; overflow: hidden; display: none; background: #000; }
+        #screen { max-height: 85vh; display: block; cursor: crosshair; user-select: none; }
+        .nav { height: 50px; background: #111; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #222; }
+        .nav b { cursor: pointer; padding: 10px; font-size: 1.2rem; }
+        .controls { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; }
+        .btn { width: 50px; height: 50px; border-radius: 50%; background: #1e293b; border: 1px solid #334155; color: #fff; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2 style="color:var(--accent)">G0X_CORE</h2>
+        <div id="dev-list"></div>
+    </div>
+    <div id="main">
+        <div id="screen-area">
+            <div id="screen-wrap">
+                <img id="screen" draggable="false" />
+                <div class="nav">
+                    <b onclick="sendCommand('recents')">▢</b>
+                    <b onclick="sendCommand('home')">○</b>
+                    <b onclick="sendCommand('back')">◁</b>
+                </div>
+            </div>
+        </div>
+        <div class="controls">
+            <button class="btn" onclick="sendCommand('wake')">⚡</button>
+            <button class="btn" onclick="sendCommand('lock')" style="color:red">🔒</button>
+            <button class="btn" onclick="location.reload()">🔄</button>
+        </div>
+    </div>
+    <script>
+        const img = document.getElementById('screen');
+        const wrap = document.getElementById('screen-wrap');
+        const list = document.getElementById('dev-list');
+        const ws = new WebSocket(`ws://${location.host}`);
+        let active = null, startX, startY;
+
+        ws.onopen = () => ws.send(JSON.stringify({ type: 'controller' }));
+        ws.onmessage = (e) => {
+            if (e.data instanceof Blob) {
+                img.src = URL.createObjectURL(e.data);
+            } else {
+                const data = JSON.parse(e.data);
+                if (data.type === 'device_list') render(data.devices);
+            }
+        };
+
+        function render(devs) {
+            list.innerHTML = '';
+            devs.forEach(d => {
+                const div = document.createElement('div');
+                div.className = 'dev-item' + (active === d.code ? ' active' : '');
+                div.innerHTML = `<b>${d.name}</b><br><small>${d.code}</small>`;
+                div.onclick = () => {
+                    active = d.code;
+                    wrap.style.display = 'block';
+                    ws.send(JSON.stringify({ type: 'select_device', code: d.code }));
+                    render(devs);
+                };
+                list.appendChild(div);
+            });
+        }
+
+        img.onmousedown = (e) => {
+            const r = img.getBoundingClientRect();
+            startX = (e.clientX - r.left) / r.width;
+            startY = (e.clientY - r.top) / r.height;
+            e.preventDefault();
+        };
+
+        img.onmouseup = (e) => {
+            const r = img.getBoundingClientRect();
+            const endX = (e.clientX - r.left) / r.width;
+            const endY = (e.clientY - r.top) / r.height;
+            if (Math.abs(startX - endX) < 0.01 && Math.abs(startY - endY) < 0.01) {
+                ws.send(JSON.stringify({ action: 'click', px: startX, py: startY }));
+            } else {
+                ws.send(JSON.stringify({ action: 'swipe', px1: startX, py1: startY, px2: endX, py2: endY, duration: 300 }));
+            }
+        };
+
+        function sendCommand(a) { ws.send(JSON.stringify({ action: a })); }
+    </script>
+</body>
+</html>
